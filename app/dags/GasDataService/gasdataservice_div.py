@@ -82,7 +82,7 @@ def setups():
     There is an example `.env.example`, withou real sensible values."""
     global URL, data_dir, page_size
     URL = 'https://api.energidataservice.dk/'
-    data_dir = './dags/EnergiDataService/data'
+    data_dir = './dags/GasDataService/data'
     page_size = 1000
     
 
@@ -93,17 +93,9 @@ default_task_args = {
 }
 
 @task
-def extract_ElectricityProdex(**kwargs):
-    """
-    Produceret og import/export af el fra forskellige typer kilder
-    hvert 5. minut
-
-    https://www.energidataservice.dk/tso-electricity/ElectricityProdex5MinRealtime#metadata-info
-    https://www.energidataservice.dk/guides/api-guides
-
-    """
+def extract_GasProdex(**kwargs):
     global URL, data_dir, page_size
-    service = 'dataset/ElectricityProdex5MinRealtime'
+    service = 'dataset/Gasflow'
     
     params = {}
     #params['limit'] = 4
@@ -116,7 +108,7 @@ def extract_ElectricityProdex(**kwargs):
 
     print(params['start'], params['end'])
 
-    return pull_data(service, data_dir, 'ElectricityProdex', ts, page_size, params)
+    return pull_data(service, data_dir, 'GasProdex', ts, page_size, params)
     #https://api.energidataservice.dk/dataset/ElectricityProdex5MinRealtime?offset=0&start=2022-12-26T00:00&end=2022-12-27T00:00&sort=Minutes5UTC%20DESC&timezone=dk
 
 @task
@@ -128,7 +120,7 @@ def write_to_bucket(eProdex_jsons, table_path):
     import json
 
     # MINIO_BUCKET_NAME = os.getenv("MINIO_BUCKET_NAME")
-    MINIO_BUCKET_NAME = 'elprodex-data'
+    MINIO_BUCKET_NAME = 'gasprodex-data'
     # MINIO_ROOT_USER = os.getenv("MINIO_ROOT_USER")
     # MINIO_ROOT_PASSWORD = os.getenv("MINIO_ROOT_PASSWORD")
 
@@ -174,81 +166,21 @@ def write_to_bucket(eProdex_jsons, table_path):
 
 
 @dag( 
-    dag_id='electrical_power_gross',
+    dag_id='gas_gross',
     schedule=timedelta(minutes=5),
     start_date=pendulum.datetime(2023, 6, 1, 0, 0, 0, tz="Europe/Copenhagen"),
     catchup=True,
     max_active_tasks=5,
     max_active_runs=5,
-    tags=['experimental', 'energy', 'rest api'],
+    tags=['experimental', 'gas', 'rest api'],
     default_args=default_task_args,)
-def electrical_power_gross():
-    print("Doing energy_data")
+def gas_gross():
+    print("Doing gas_data")
     setups()
     if __name__ != "__main__": # as in "normal" operation as DAG stated in Airflow
-        eProdex_jsons = extract_ElectricityProdex()
+        eProdex_jsons = extract_GasProdex()
     else: # more or less test mode
-        eProdex_jsons = extract_ElectricityProdex(ts=datetime.now().isoformat())
+        eProdex_jsons = extract_GasProdex(ts=datetime.now().isoformat())
     write_to_bucket(eProdex_jsons, 'live')
 
-@task
-def extract_ElectricityProdex_back(**kwargs):
-    """
-    Produceret og import/export af el fra forskellige typer kilder
-    hent historisk data
-
-    https://www.energidataservice.dk/tso-electricity/ElectricityProdex5MinRealtime#metadata-info
-    https://www.energidataservice.dk/guides/api-guides
-    
-    """
-    global URL, data_dir, page_size
-    service = 'dataset/ElectricityProdex5MinRealtime'
-    
-    params = {}
-    #params['limit'] = 4
-    #page_size = 500
-
-    #print('kwargs:', kwargs)
-    for k, v in kwargs.items():
-        print(k, '=', v)
-
-    ts = datetime.fromisoformat(kwargs['ts'])
-
-    params['start'] = kwargs['data_interval_start'].replace(tzinfo=None).isoformat(timespec='minutes')
-    params['end']   = kwargs['data_interval_end'].replace(tzinfo=None).isoformat(timespec='minutes')
-
-    #print(params['start'], params['end'])
-
-    return pull_data(service, data_dir, 'ElectricityProdex_back', ts, page_size, params)
-    #return 'dummy'
-    #https://api.energidataservice.dk/dataset/ElectricityProdex5MinRealtime?offset=0&start=2022-12-26T00:00&end=2022-12-27T00:00&sort=Minutes5UTC%20DESC&timezone=dk
-
-
-@dag( 
-    dag_id='electrical_power_gross_back',
-    schedule='@monthly',
-    #end_date=pendulum.datetime(2023, 6, 1, 0, 0, 0, tz="Europe/Copenhagen"),
-    start_date=pendulum.datetime(2014, 12, 31, 23, 0, 0, tz="Europe/Copenhagen"),
-    catchup=True,
-    max_active_tasks=5,
-    max_active_runs=5,
-    tags=['experimental', 'energy', 'rest api'],
-    default_args=default_task_args,)
-def electrical_power_gross_back():
-    print("Doing energy_data")
-    setups()
-    if __name__ != "__main__": # as in "normal" operation as DAG stated in Airflow
-        eProdex_jsons = extract_ElectricityProdex_back()
-    else: # more or less test mode
-        args = {
-            'ts': datetime.now().isoformat(),
-            'data_interval_end' : datetime.fromisoformat("2021-01-31T23:00:00+00:00"),
-            'data_interval_start' : datetime.fromisoformat("2020-12-31T23:00:00+00:00"),
-        }
-        eProdex_jsons = extract_ElectricityProdex_back(**args)
-    write_to_bucket(eProdex_jsons, 'back')
-
-
-
-electrical_power_gross()
-electrical_power_gross_back()
+gas_gross()
